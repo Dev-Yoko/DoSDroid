@@ -1,9 +1,9 @@
 name: Build, Test, and Release Android APK
 run-name: ${{ github.event.inputs.repository }}:${{ github.event.inputs.taskName }}
 env:
-  # The name of the main module repository
   main_project_module: workspace
   app_directory: ""
+  date_today: ${{ steps.set_date.outputs.date_today }}
   
 on:
   workflow_dispatch:
@@ -22,8 +22,8 @@ on:
         default: "assembleDebug"
       release:
         description: "Whether to release the APK (true/false)"
-        required: true
-        default: "true"
+        required: false
+        default: "false"
       yourAppName:
         description: "Name of your application"
         required: true
@@ -35,8 +35,10 @@ jobs:
     steps:
 
       - name: Set Current DATE
+        id: set_date
         run: echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-
+        shell: bash
+        
       - name: Setup JDK
         uses: actions/setup-java@v3
         with:
@@ -48,24 +50,35 @@ jobs:
 
       - name: Find appDirectory
         run: |
-          # Find the directory containing the build.gradle file
           app_directory=$(find ./${{ env.main_project_module }} -name "build.gradle" -exec dirname {} \; | head -n 1)
           echo "app_directory=${app_directory}" >> $GITHUB_ENV
 
-      - name: Update dependencies
+      - name: Generate Gradle Wrapper
         working-directory: ${{ env.app_directory }}
-        run: ./gradlew --refresh-dependencies
+        run: |
+          cd ${{ env.app_directory }}
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 7.0.2  # Replace with the latest Gradle version
+          fi
+          chmod +x gradlew
+
+      - name: Refresh Dependencies
+        working-directory: ${{ env.app_directory }}
+        run: |
+          cd ${{ env.app_directory }}
+          ./gradlew --refresh-dependencies || echo "No dependencies found"
 
       - name: Build APK
         working-directory: ${{ env.app_directory }}
         run: |
-          if [ ! -f "gradlew" ]; then gradle wrapper; fi
-          chmod +x gradlew
+          cd ${{ env.app_directory }}
           ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
 
       - name: Run tests
         working-directory: ${{ env.app_directory }}
-        run: ./gradlew test connectedAndroidTest --stacktrace
+        run: |
+          cd ${{ env.app_directory }}
+          ./gradlew test connectedAndroidTest --stacktrace
 
       - name: Calculate checksum
         id: checksum
@@ -84,19 +97,21 @@ jobs:
 
       - name: Run lint checks
         working-directory: ${{ env.app_directory }}
-        run: ./gradlew lintDebug --console=plain --max-warnings 0 || echo "Lint found issues"
+        run: |
+          cd ${{ env.app_directory }}
+          ./gradlew lintDebug --console=plain --max-warnings 0 || echo "Lint found issues"
 
       - name: Attempt to fix lint issues
         if: ${{ github.event.inputs.release == 'true' }}
         working-directory: ${{ env.app_directory }}
-        run: ./gradlew lintFixDebug --console=plain --max-warnings 0 || echo "Failed to fix lint issues"
+        run: |
+          cd ${{ env.app_directory }}
+          ./gradlew lintFixDebug --console=plain --max-warnings 0 || echo "Failed to fix lint issues"
 
       - name: Create Release
         if: ${{ github.event.inputs.release == 'true' }}
         id: create_release
         uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         with:
           tag_name: v1.0.0  # Replace with your desired tag name
           release_name: Release v1.0.0  # Replace with your desired release name
@@ -106,8 +121,6 @@ jobs:
       - name: Upload Release Asset
         if: ${{ github.event.inputs.release == 'true' }}
         uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.app_directory }}/app/build/outputs/apk/*.apk
@@ -117,8 +130,6 @@ jobs:
       - name: Upload Checksum as Release Asset
         if: ${{ github.event.inputs.release == 'true' }}
         uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.app_directory }}/app/build/outputs/apk/apk_checksum.txt
