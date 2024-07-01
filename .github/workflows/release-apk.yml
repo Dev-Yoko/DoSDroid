@@ -114,7 +114,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          TOKEN: ${{ secrets.TOKEN }}
+          github_token: ${{ secrets.TOKEN }}
         with:
           tag_name: ${{ github.event.inputs.releaseTag }}
           release_name: "Release ${{ github.event.inputs.releaseTag }}"
@@ -125,9 +125,21 @@ jobs:
         id: upload_release_asset
         uses: actions/upload-release-asset@v1
         env:
-          TOKEN: ${{ secrets.TOKEN }}
+          github_token: ${{ secrets.TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/debug/*.apk
           asset_name: "app-debug-${{ env.date_today }}.apk"
           asset_content_type: application/vnd.android.package-archive
+
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Add APK for release ${{ github.event.inputs.releaseTag }}"
+          file_pattern: "${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/debug/*.apk"
+          branch: ${{ github.ref }}
+
+      - name: Push Changes to GitHub
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.TOKEN }}
