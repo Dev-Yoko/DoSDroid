@@ -23,7 +23,7 @@ on:
       release:
         description: "Whether to release the APK (true/false)"
         required: true
-        default: "false"
+        default: "true"
       yourAppName:
         description: "Name of your application"
         required: true
@@ -49,8 +49,8 @@ jobs:
       - name: Find appDirectory
         run: |
           # Find the directory containing the build.gradle file
-          export app_directory=$(find ./${{ env.main_project_module }} -name "build.gradle" -exec dirname {} \; | head -n 1)
-          echo "::set-env name=app_directory::$app_directory"
+          app_directory=$(find ./${{ env.main_project_module }} -name "build.gradle" -exec dirname {} \; | head -n 1)
+          echo "app_directory=${app_directory}" >> $GITHUB_ENV
 
       - name: Update dependencies
         working-directory: ${{ env.app_directory }}
