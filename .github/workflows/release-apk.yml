@@ -68,6 +68,8 @@ jobs:
           else
             echo "🔧 Using default JDK version: $default_jdk"
             echo "jdk_version=$default_jdk" >> $GITHUB_ENV
+          fi
+          
           echo "✅ JDK version set to ${{ env.jdk_version }}"
 
       - name: Setup JDK
