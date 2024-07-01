@@ -6,7 +6,7 @@ on:
       repository:
         description: "Git repository URL"
         required: true
-        default: "https://github.com/Dev-Yoko/DoSDroid"
+        default: "https://github.com/android/sunflower"
       jdkVersion:
         description: "OpenJDK version to use: 8 / 11 / 17 etc."
         required: false
@@ -17,8 +17,8 @@ on:
         default: "assembleDebug"
       release:
         description: "Whether to release the APK (true/false)"
-        required: true
-        default: "true"
+        required: false
+        default: "false"
       yourAppName:
         description: "Name of your application"
         required: true
@@ -29,7 +29,6 @@ jobs:
 
     env:
       main_project_module: workspace
-      app_directory: ""
 
     steps:
       - name: Set Current DATE
@@ -45,12 +44,21 @@ jobs:
       - name: Clone project
         run: git clone --depth=1 ${{ github.event.inputs.repository }} ${{ env.main_project_module }}
 
+      - name: Create Gradle Wrapper if not exists
+        run: |
+          mkdir -p ${{ env.main_project_module }}/gradle/wrapper
+          if [ ! -f "${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties" ]; then
+              echo "distributionUrl=https://services.gradle.org/distributions/gradle-7.0.2-bin.zip" > ${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties
+              ./gradlew wrapper --gradle-version 7.0.2
+          fi
+          chmod +x ./gradlew
+        working-directory: ${{ env.main_project_module }}
+
       - name: Ensure Gradle Wrapper and Directory Exist
         run: |
-          mkdir -p ${{ env.main_project_module }}/app
           cd ${{ env.main_project_module }}/app || exit
           if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 7.0.2  # Replace with the latest Gradle version
+            ln -s ../gradlew .
           fi
           chmod +x gradlew
         shell: /usr/bin/bash -e {0}
@@ -63,7 +71,7 @@ jobs:
       - name: Build APK
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
+          ./gradlew ${{ github.event.inputs.taskName }} --warning-mode all --stacktrace
 
       - name: Run tests
         working-directory: ${{ env.main_project_module }}/app
@@ -123,13 +131,3 @@ jobs:
           asset_path: ${{ env.main_project_module }}/app/app/build/outputs/apk/apk_checksum.txt
           asset_name: ${{ github.event.inputs.yourAppName }}-${{ github.event.inputs.taskName }}-${{ steps.set_date.outputs.date_today }}-checksum.txt
           asset_content_type: text/plain
-
-      - name: Create Gradle Wrapper if not exists
-        run: |
-          mkdir -p ${{ env.main_project_module }}/gradle/wrapper
-          if [ ! -f "${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties" ]; then
-              echo "distributionUrl=https://services.gradle.org/distributions/gradle-7.0.2-bin.zip" > ${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties
-              ./gradlew wrapper --gradle-version 7.0.2
-          fi
-          chmod +x ./gradlew
-        working-directory: ${{ env.main_project_module }}
