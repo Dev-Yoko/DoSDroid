@@ -1,4 +1,7 @@
-name: Build, Test, and Release Android APK
+name: Build, Test & Release Android APK
+run-name: ${{ github.event.inputs.repository }}:${{ github.event.inputs.taskName }}
+env:
+  main_project_module: workspace
 
 on:
   workflow_dispatch:
@@ -7,127 +10,124 @@ on:
         description: "Git repository URL"
         required: true
         default: "https://github.com/android/sunflower"
-      jdkVersion:
-        description: "OpenJDK version to use: 8 / 11 / 17 etc."
+      defaultJdkVersion:
+        description: "Default OpenJDK version to use if no match is found: 8 / 11 / 17 etc."
+        required: true
+        default: "8"
+      mainBranchJdkVersion:
+        description: "OpenJDK version for main or master branches"
         required: false
         default: "17"
+      featureBranchJdkVersion:
+        description: "OpenJDK version for feature branches"
+        required: false
+        default: "11"
       taskName:
         description: "build.gradle task name: assemble[Flavor]Debug"
         required: false
         default: "assembleDebug"
-      release:
-        description: "Whether to release the APK (true/false)"
+      appDirectory:
+        description: "Default directory where build.gradle located [/your directory]"
         required: false
-        default: "false"
-      yourAppName:
-        description: "Name of your application"
+        default: ""
+      releaseTag:
+        description: "Tag for the release"
         required: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      main_project_module: workspace
-
+        
     steps:
       - name: Set Current DATE
-        id: set_date
-        run: echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        run: |
+          echo "🗓️ Setting current date..."
+          echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+          echo "✅ Date set to ${{ env.date_today }}"
+
+      - name: Determine JDK Version
+        id: determine_jdk
+        run: |
+          echo "🔍 Determining JDK version..."
+          branch_name=${{ github.ref_name }}
+          default_jdk=${{ github.event.inputs.defaultJdkVersion }}
+          main_jdk=${{ github.event.inputs.mainBranchJdkVersion }}
+          feature_jdk=${{ github.event.inputs.featureBranchJdkVersion }}
+          
+          echo "📂 Branch name: $branch_name"
+          echo "⚙️ Default JDK: $default_jdk"
+          echo "⚙️ Main Branch JDK: $main_jdk"
+          echo "⚙️ Feature Branch JDK: $feature_jdk"
+          
+          if [[ "$branch_name" == *"main"* || "$branch_name" == *"master"* ]]; then
+            echo "🔧 Using JDK version: $main_jdk"
+            echo "jdk_version=$main_jdk" >> $GITHUB_ENV
+          elif [[ "$branch_name" == feature/* ]]; then
+            echo "🔧 Using JDK version: $feature_jdk"
+            echo "jdk_version=$feature_jdk" >> $GITHUB_ENV
+          else
+            echo "🔧 Using default JDK version: $default_jdk"
+            echo "jdk_version=$default_jdk" >> $GITHUB_ENV
+          echo "✅ JDK version set to ${{ env.jdk_version }}"
 
       - name: Setup JDK
         uses: actions/setup-java@v3
         with:
           distribution: "temurin"
-          java-version: ${{ github.event.inputs.jdkVersion }}
+          java-version: ${{ env.jdk_version }}
+        run: echo "☕ Setting up JDK version ${{ env.jdk_version }}..."
 
       - name: Clone project
-        run: git clone --depth=1 ${{ github.event.inputs.repository }} ${{ env.main_project_module }}
-
-      - name: Create Gradle Wrapper if not exists
         run: |
-          mkdir -p ${{ env.main_project_module }}/gradle/wrapper
-          if [ ! -f "${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties" ]; then
-              echo "distributionUrl=https://services.gradle.org/distributions/gradle-7.0.2-bin.zip" > ${{ env.main_project_module }}/gradle/wrapper/gradle-wrapper.properties
-              ./gradlew wrapper --gradle-version 7.0.2
-          fi
-          chmod +x ./gradlew
-        working-directory: ${{ env.main_project_module }}
-
-      - name: Ensure Gradle Wrapper and Directory Exist
-        run: |
-          cd ${{ env.main_project_module }}/app || exit
-          if [ ! -f "gradlew" ]; then
-            ln -s ../gradlew .
-          fi
-          chmod +x gradlew
-        shell: /usr/bin/bash -e {0}
-
-      - name: Refresh Dependencies
-        working-directory: ${{ env.main_project_module }}/app
-        run: |
-          ./gradlew --refresh-dependencies || echo "No dependencies found"
+          echo "📂 Cloning project repository..."
+          git clone --depth=1 ${{ github.event.inputs.repository }} ${{ env.main_project_module }}
+          echo "✅ Repository cloned to ${{ env.main_project_module }}"
 
       - name: Build APK
-        working-directory: ${{ env.main_project_module }}/app
+        working-directory: ./${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}
         run: |
-          ./gradlew ${{ github.event.inputs.taskName }} --warning-mode all --stacktrace
+          echo "🔨 Building APK..."
+          if [ ! -f "gradlew" ]; then 
+            echo "🔧 Setting up Gradle wrapper..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
+          ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
+          echo "✅ APK build completed"
 
-      - name: Run tests
-        working-directory: ${{ env.main_project_module }}/app
+      - name: Run Tests
+        working-directory: ./${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}
         run: |
-          ./gradlew test connectedAndroidTest --stacktrace
-
-      - name: Calculate checksum
-        id: checksum
-        run: |
-          cd ${{ env.main_project_module }}/app/app/build/outputs/apk/
-          shasum -a 256 *.apk | awk '{print $1}' > apk_checksum.txt
-          echo "::set-output name=checksum::$(cat apk_checksum.txt)"
+          echo "🧪 Running tests..."
+          ./gradlew test
+          echo "✅ Tests completed"
 
       - name: Upload the APK artifact with 1 day retention
-        if: always()
         uses: actions/upload-artifact@v3
         with:
-          path: ${{ env.main_project_module }}/app/app/build/outputs/apk/
-          name: apk-debug [${{ steps.set_date.outputs.date_today }}]
+          path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/
+          name: apk-debug [${{ env.date_today }}]
           retention-days: 1
+        run: echo "📦 Uploading APK artifact..."
 
-      - name: Run lint checks
-        working-directory: ${{ env.main_project_module }}/app
-        run: |
-          ./gradlew lintDebug --console=plain --max-warnings 0 || echo "Lint found issues"
-
-      - name: Attempt to fix lint issues
-        if: ${{ github.event.inputs.release == 'true' }}
-        working-directory: ${{ env.main_project_module }}/app
-        run: |
-          ./gradlew lintFixDebug --console=plain --max-warnings 0 || echo "Failed to fix lint issues"
-
-      - name: Create Release
-        if: ${{ github.event.inputs.release == 'true' }}
+      - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         with:
-          tag_name: v1.0.0  # Replace with your desired tag name
-          release_name: Release v1.0.0  # Replace with your desired release name
+          tag_name: ${{ github.event.inputs.releaseTag }}
+          release_name: "Release ${{ github.event.inputs.releaseTag }}"
           draft: false
           prerelease: false
 
-      - name: Upload Release Asset
-        if: ${{ github.event.inputs.release == 'true' }}
+      - name: Upload APK to Release
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.main_project_module }}/app/app/build/outputs/apk/*.apk
-          asset_name: ${{ github.event.inputs.yourAppName }}-${{ github.event.inputs.taskName }}-${{ steps.set_date.outputs.date_today }}.apk
+          asset_path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/debug/*.apk
+          asset_name: "app-debug-${{ env.date_today }}.apk"
           asset_content_type: application/vnd.android.package-archive
-
-      - name: Upload Checksum as Release Asset
-        if: ${{ github.event.inputs.release == 'true' }}
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.main_project_module }}/app/app/build/outputs/apk/apk_checksum.txt
-          asset_name: ${{ github.event.inputs.yourAppName }}-${{ github.event.inputs.taskName }}-${{ steps.set_date.outputs.date_today }}-checksum.txt
-          asset_content_type: text/plain
+        run: echo "🚀 Uploading APK to GitHub Release..."
