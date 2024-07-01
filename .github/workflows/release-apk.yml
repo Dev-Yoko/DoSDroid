@@ -1,0 +1,60 @@
+# From https://github.com/ni554n/apk-builder-action
+# guide https://github.com/marketplace/actions/automated-build-android-app-with-github-action
+name: Build Android APK
+run-name: ${{ github.event.inputs.repository }}:${{ github.event.inputs.taskName }}
+env:
+  # The name of the main module repository
+  main_project_module: workspace
+  
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Git repository URL"
+        required: true
+        default: "https://github.com/android/sunflower"
+      jdkVersion:
+        description: "OpenJDK version to use: 8 / 11 / 17 etc."
+        required: false
+        default: "8"
+      taskName:
+        description: "build.gradle task name: assemble[Flavor]Debug"
+        required: false
+        default: "assembleDebug"
+      appDirectory:
+        description: "Default directory where build.gradle located [/your directory]"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Android SDK is built-in in this image
+        
+    steps:
+
+      # Set Current Date As Env Variable
+      - name: Set Current DATE
+        run: echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        
+      - name: Setup JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: ${{ github.event.inputs.jdkVersion }}
+
+      - name: Clone project
+        run: git clone --depth=1 ${{ github.event.inputs.repository }} ${{ env.main_project_module }}
+
+      - name: Build APK
+        working-directory: ./${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}
+        run: |
+          if [ ! -f "gradlew" ]; then gradle wrapper; fi
+          chmod +x gradlew
+          ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
+
+      - name: Upload the APK artifact with 1 day retention
+        uses: actions/upload-artifact@v3
+        with:
+          path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/
+          name: apk-debug [${{ env.date_today }}]
+          retention-days: 1
