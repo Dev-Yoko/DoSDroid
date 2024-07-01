@@ -75,7 +75,6 @@ jobs:
         with:
           distribution: "temurin"
           java-version: ${{ env.jdk_version }}
-        run: echo "☕ Setting up JDK version ${{ env.jdk_version }}..."
 
       - name: Clone project
         run: |
@@ -108,13 +107,12 @@ jobs:
           path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/
           name: apk-debug [${{ env.date_today }}]
           retention-days: 1
-        run: echo "📦 Uploading APK artifact..."
 
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          TOKEN: ${{ secrets.TOKEN }}
         with:
           tag_name: ${{ github.event.inputs.releaseTag }}
           release_name: "Release ${{ github.event.inputs.releaseTag }}"
@@ -122,12 +120,12 @@ jobs:
           prerelease: false
 
       - name: Upload APK to Release
+        id: upload_release_asset
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          TOKEN: ${{ secrets.TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.main_project_module }}${{ github.event.inputs.appDirectory }}/app/build/outputs/apk/debug/*.apk
           asset_name: "app-debug-${{ env.date_today }}.apk"
           asset_content_type: application/vnd.android.package-archive
-        run: echo "🚀 Uploading APK to GitHub Release..."
