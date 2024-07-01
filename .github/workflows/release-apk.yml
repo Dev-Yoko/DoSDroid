@@ -59,19 +59,16 @@ jobs:
       - name: Refresh Dependencies
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.main_project_module }}/app
           ./gradlew --refresh-dependencies || echo "No dependencies found"
 
       - name: Build APK
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.main_project_module }}/app
           ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
 
       - name: Run tests
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.main_project_module }}/app
           ./gradlew test connectedAndroidTest --stacktrace
 
       - name: Calculate checksum
@@ -92,14 +89,12 @@ jobs:
       - name: Run lint checks
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.main_project_module }}/app
           ./gradlew lintDebug --console=plain --max-warnings 0 || echo "Lint found issues"
 
       - name: Attempt to fix lint issues
         if: ${{ github.event.inputs.release == 'true' }}
         working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.main_project_module }}/app
           ./gradlew lintFixDebug --console=plain --max-warnings 0 || echo "Failed to fix lint issues"
 
       - name: Create Release
