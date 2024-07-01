@@ -46,42 +46,38 @@ jobs:
       - name: Clone project
         run: git clone --depth=1 ${{ github.event.inputs.repository }} ${{ env.main_project_module }}
 
-      - name: Find appDirectory
+      - name: Ensure Gradle Wrapper and Directory Exist
         run: |
-          app_directory=$(find ./${{ env.main_project_module }} -name "build.gradle" -exec dirname {} \; | head -n 1)
-          echo "app_directory=${app_directory}" >> $GITHUB_ENV
-
-      - name: Generate Gradle Wrapper
-        working-directory: ${{ env.app_directory }}
-        run: |
-          cd ${{ env.app_directory }}
+          mkdir -p ${{ env.main_project_module }}/app
+          cd ${{ env.main_project_module }}/app || exit
           if [ ! -f "gradlew" ]; then
             gradle wrapper --gradle-version 7.0.2  # Replace with the latest Gradle version
           fi
           chmod +x gradlew
+        shell: /usr/bin/bash -e {0}
 
       - name: Refresh Dependencies
-        working-directory: ${{ env.app_directory }}
+        working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.app_directory }}
+          cd ${{ env.main_project_module }}/app
           ./gradlew --refresh-dependencies || echo "No dependencies found"
 
       - name: Build APK
-        working-directory: ${{ env.app_directory }}
+        working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.app_directory }}
+          cd ${{ env.main_project_module }}/app
           ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
 
       - name: Run tests
-        working-directory: ${{ env.app_directory }}
+        working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.app_directory }}
+          cd ${{ env.main_project_module }}/app
           ./gradlew test connectedAndroidTest --stacktrace
 
       - name: Calculate checksum
         id: checksum
         run: |
-          cd ${{ env.app_directory }}/app/build/outputs/apk/
+          cd ${{ env.main_project_module }}/app/app/build/outputs/apk/
           shasum -a 256 *.apk | awk '{print $1}' > apk_checksum.txt
           echo "::set-output name=checksum::$(cat apk_checksum.txt)"
 
@@ -89,21 +85,21 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          path: ${{ env.app_directory }}/app/build/outputs/apk/
+          path: ${{ env.main_project_module }}/app/app/build/outputs/apk/
           name: apk-debug [${{ steps.set_date.outputs.date_today }}]
           retention-days: 1
 
       - name: Run lint checks
-        working-directory: ${{ env.app_directory }}
+        working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.app_directory }}
+          cd ${{ env.main_project_module }}/app
           ./gradlew lintDebug --console=plain --max-warnings 0 || echo "Lint found issues"
 
       - name: Attempt to fix lint issues
         if: ${{ github.event.inputs.release == 'true' }}
-        working-directory: ${{ env.app_directory }}
+        working-directory: ${{ env.main_project_module }}/app
         run: |
-          cd ${{ env.app_directory }}
+          cd ${{ env.main_project_module }}/app
           ./gradlew lintFixDebug --console=plain --max-warnings 0 || echo "Failed to fix lint issues"
 
       - name: Create Release
@@ -121,7 +117,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.app_directory }}/app/build/outputs/apk/*.apk
+          asset_path: ${{ env.main_project_module }}/app/app/build/outputs/apk/*.apk
           asset_name: ${{ github.event.inputs.yourAppName }}-${{ github.event.inputs.taskName }}-${{ steps.set_date.outputs.date_today }}.apk
           asset_content_type: application/vnd.android.package-archive
 
@@ -130,6 +126,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.app_directory }}/app/build/outputs/apk/apk_checksum.txt
+          asset_path: ${{ env.main_project_module }}/app/app/build/outputs/apk/apk_checksum.txt
           asset_name: ${{ github.event.inputs.yourAppName }}-${{ github.event.inputs.taskName }}-${{ steps.set_date.outputs.date_today }}-checksum.txt
           asset_content_type: text/plain
